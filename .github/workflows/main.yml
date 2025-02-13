@@ -3,10 +3,6 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [ * ]
-    tags: [ 'v*.*.*' ]
-  pull_request:
-    branches: [ * ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
