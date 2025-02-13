@@ -25,4 +25,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/sourcebot:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/sourcebot:1.0
