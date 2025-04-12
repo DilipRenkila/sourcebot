@@ -7,7 +7,7 @@ import { getGiteaReposFromConfig } from "./gitea.js";
 import { getGerritReposFromConfig } from "./gerrit.js";
 import { getBitbucketReposFromConfig } from "./bitbucket.js";
 import { AppContext, LocalRepository, GitRepository, Repository, Settings } from "./types.js";
-import { cloneRepository, fetchRepository } from "./git.js";
+import { cloneRepository, fetchRepository, pullRepository } from "./git.js";
 import { createLogger } from "./logger.js";
 import { createRepository, Database, loadDB, updateRepository, updateSettings } from './db.js';
 import { arraysEqualShallow, isRemotePath, measure } from "./utils.js";
@@ -23,27 +23,35 @@ const logger = createLogger('main');
 
 const syncGitRepository = async (repo: GitRepository, settings: Settings, ctx: AppContext) => {
     let fetchDuration_s: number | undefined = undefined;
+    let pullDuration_s: number | undefined = undefined;
     let cloneDuration_s: number | undefined = undefined;
 
     if (existsSync(repo.path)) {
+        // First fetch to get all remote changes
         logger.info(`Fetching ${repo.id}...`);
-
-        const { durationMs } = await measure(() => fetchRepository(repo, ({ method, stage , progress}) => {
+        const fetchResult = await measure(() => fetchRepository(repo, ({ method, stage, progress}) => {
             logger.info(`git.${method} ${stage} stage ${progress}% complete for ${repo.id}`)
         }));
-        fetchDuration_s = durationMs / 1000;
-
+        fetchDuration_s = fetchResult.durationMs / 1000;
         process.stdout.write('\n');
         logger.info(`Fetched ${repo.id} in ${fetchDuration_s}s`);
 
-    } else {
-        logger.info(`Cloning ${repo.id}...`);
+        // Then pull to update the working copy
+        logger.info(`Pulling ${repo.id}...`);
+        const pullResult = await measure(() => pullRepository(repo, ({ method, stage, progress}) => {
+            logger.info(`git.${method} ${stage} stage ${progress}% complete for ${repo.id}`)
+        }));
+        pullDuration_s = pullResult.durationMs / 1000;
+        process.stdout.write('\n');
+        logger.info(`Pulled ${repo.id} in ${pullDuration_s}s`);
 
+    } else {
+        // For new repositories, clone without the --bare flag
+        logger.info(`Cloning ${repo.id}...`);
         const { durationMs } = await measure(() => cloneRepository(repo, ({ method, stage, progress }) => {
             logger.info(`git.${method} ${stage} stage ${progress}% complete for ${repo.id}`)
         }));
         cloneDuration_s = durationMs / 1000;
-
         process.stdout.write('\n');
         logger.info(`Cloned ${repo.id} in ${cloneDuration_s}s`);
     }
@@ -55,6 +63,7 @@ const syncGitRepository = async (repo: GitRepository, settings: Settings, ctx: A
 
     return {
         fetchDuration_s,
+        pullDuration_s,
         cloneDuration_s,
         indexDuration_s,
     }
@@ -420,3 +429,4 @@ export const main = async (context: AppContext) => {
 
     }
 }
+
