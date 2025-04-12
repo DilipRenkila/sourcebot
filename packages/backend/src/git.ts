@@ -19,15 +19,16 @@ export const cloneRepository = async (repo: GitRepository, onProgress?: (event: 
         ([key, value]) => ['--config', `${key}=${value}`]
     );
 
+    // Remove the "--bare" flag to get a full working copy
     await git.clone(
         repo.cloneUrl,
         repo.path,
         [
-            "--bare",
             ...gitConfig
         ]
     );
 
+    // This is still useful to ensure all branches are fetched
     await git.cwd({
         path: repo.path,
     }).addConfig("remote.origin.fetch", "+refs/heads/*:refs/heads/*");
@@ -45,6 +46,22 @@ export const fetchRepository = async (repo: GitRepository, onProgress?: (event: 
         "origin",
         [
             "--prune",
+            "--progress"
+        ]
+    );
+}
+
+export const pullRepository = async (repo: GitRepository, onProgress?: (event: SimpleGitProgressEvent) => void) => {
+    const git = simpleGit({
+        progress: onProgress,
+    });
+
+    await git.cwd({
+        path: repo.path,
+    }).pull(
+        "origin",
+        undefined,
+        [
             "--progress"
         ]
     );
