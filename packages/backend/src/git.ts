@@ -22,8 +22,9 @@ export const cloneRepository = async (repo: GitRepository, onProgress?: (event: 
     // Remove the "--bare" flag to get a full working copy
     await git.clone(
         repo.cloneUrl,
-        repo.path,
+        repo.path,        
         [
+            '--no-bare',
             ...gitConfig
         ]
     );
