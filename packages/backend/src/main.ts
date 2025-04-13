@@ -7,7 +7,7 @@ import { getGiteaReposFromConfig } from "./gitea.js";
 import { getGerritReposFromConfig } from "./gerrit.js";
 import { getBitbucketReposFromConfig } from "./bitbucket.js";
 import { AppContext, LocalRepository, GitRepository, Repository, Settings } from "./types.js";
-import { cloneRepository, fetchRepository, pullRepository } from "./git.js";
+import { cloneRepository, fetchRepository, pullRepository ,syncRepository} from "./git.js";
 import { createLogger } from "./logger.js";
 import { createRepository, Database, loadDB, updateRepository, updateSettings } from './db.js';
 import { arraysEqualShallow, isRemotePath, measure } from "./utils.js";
@@ -16,45 +16,22 @@ import stripJsonComments from 'strip-json-comments';
 import { indexGitRepository, indexLocalRepository } from "./zoekt.js";
 import { getLocalRepoFromConfig, initLocalRepoFileWatchers } from "./local.js";
 import { captureEvent } from "./posthog.js";
-import { glob } from 'glob';
+import { glob, sync } from 'glob';
 import path from 'path';
 
 const logger = createLogger('main');
 
 const syncGitRepository = async (repo: GitRepository, settings: Settings, ctx: AppContext) => {
-    let fetchDuration_s: number | undefined = undefined;
-    let pullDuration_s: number | undefined = undefined;
-    let cloneDuration_s: number | undefined = undefined;
+    let syncDuration_s: number | undefined = undefined;
 
-    if (existsSync(repo.path)) {
-        // First fetch to get all remote changes
-        logger.info(`Fetching ${repo.id}...`);
-        const fetchResult = await measure(() => fetchRepository(repo, ({ method, stage, progress}) => {
-            logger.info(`git.${method} ${stage} stage ${progress}% complete for ${repo.id}`)
-        }));
-        fetchDuration_s = fetchResult.durationMs / 1000;
-        process.stdout.write('\n');
-        logger.info(`Fetched ${repo.id} in ${fetchDuration_s}s`);
-
-        // Then pull to update the working copy
-        logger.info(`Pulling ${repo.id}...`);
-        const pullResult = await measure(() => pullRepository(repo, ({ method, stage, progress}) => {
-            logger.info(`git.${method} ${stage} stage ${progress}% complete for ${repo.id}`)
-        }));
-        pullDuration_s = pullResult.durationMs / 1000;
-        process.stdout.write('\n');
-        logger.info(`Pulled ${repo.id} in ${pullDuration_s}s`);
-
-    } else {
-        // For new repositories, clone without the --bare flag
-        logger.info(`Cloning ${repo.id}...`);
-        const { durationMs } = await measure(() => cloneRepository(repo, ({ method, stage, progress }) => {
-            logger.info(`git.${method} ${stage} stage ${progress}% complete for ${repo.id}`)
-        }));
-        cloneDuration_s = durationMs / 1000;
-        process.stdout.write('\n');
-        logger.info(`Cloned ${repo.id} in ${cloneDuration_s}s`);
-    }
+    // Use syncRepository instead of separate clone/pull/fetch
+    logger.info(`Syncing ${repo.id}...`);
+    const syncResult = await measure(() => syncRepository(repo, ({ method, stage, progress}) => {
+        logger.info(`git.${method} ${stage} stage ${progress}% complete for ${repo.id}`)
+    }));
+    syncDuration_s = syncResult.durationMs / 1000;
+    process.stdout.write('\n');
+    logger.info(`Synced ${repo.id} in ${syncDuration_s}s`);
 
     logger.info(`Indexing ${repo.id}...`);
     const { durationMs } = await measure(() => indexGitRepository(repo, settings, ctx));
@@ -62,9 +39,7 @@ const syncGitRepository = async (repo: GitRepository, settings: Settings, ctx: A
     logger.info(`Indexed ${repo.id} in ${indexDuration_s}s`);
 
     return {
-        fetchDuration_s,
-        pullDuration_s,
-        cloneDuration_s,
+        syncDuration_s,
         indexDuration_s,
     }
 }
@@ -396,14 +371,13 @@ export const main = async (context: AppContext) => {
 
             try {
                 let indexDuration_s: number | undefined;
-                let fetchDuration_s: number | undefined;
-                let cloneDuration_s: number | undefined;
+                let syncDuration_s: number | undefined;
 
                 if (repo.vcs === 'git') {
                     const stats = await syncGitRepository(repo, db.data.settings, context);
                     indexDuration_s = stats.indexDuration_s;
-                    fetchDuration_s = stats.fetchDuration_s;
-                    cloneDuration_s = stats.cloneDuration_s;
+                    syncDuration_s = stats.syncDuration_s;
+                    
                 } else if (repo.vcs === 'local') {
                     const stats = await syncLocalRepository(repo, db.data.settings, context);
                     indexDuration_s = stats.indexDuration_s;
@@ -413,8 +387,7 @@ export const main = async (context: AppContext) => {
                     vcs: repo.vcs,
                     codeHost: repo.codeHost,
                     indexDuration_s,
-                    fetchDuration_s,
-                    cloneDuration_s,
+                    fetchDuration_s: syncDuration_s,
                 });
             } catch (err: any) {
                 // @todo : better error handling here..
@@ -429,4 +402,3 @@ export const main = async (context: AppContext) => {
 
     }
 }
-

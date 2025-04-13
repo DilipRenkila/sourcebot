@@ -5,6 +5,81 @@ import { createLogger } from './logger.js';
 
 const logger = createLogger('git');
 
+/**
+ * Clones or pulls a repository depending on whether it already exists
+ */
+
+export const syncRepository = async (repo: GitRepository, onProgress?: (event: SimpleGitProgressEvent) => void) => {
+    if (existsSync(repo.path)) {
+        logger.info(`${repo.id} already exists. Pulling latest changes...`);
+        try {
+            const git = simpleGit({
+                progress: onProgress,
+            });
+
+            // Check if it's a bare repository
+            const isBare = await git.cwd({
+                path: repo.path,
+            }).raw(['config', '--get', 'core.bare']).then(
+                output => output.trim() === 'true',
+                () => false
+            );
+
+            if (isBare) {
+                logger.warn(`${repo.id} is a bare repository. Cannot pull. Consider removing and re-cloning.`);
+                return;
+            }
+
+            // Pull the repository
+            await git.cwd({
+                path: repo.path,
+            }).pull(
+                "origin",
+                undefined,
+                [
+                    "--progress"
+                ]
+            );
+            logger.info(`Successfully pulled latest changes for ${repo.id}`);
+        } catch (error) {
+            logger.error(`Failed to pull repository ${repo.id}: ${error}`);
+            throw error;
+        }
+    } else {
+        logger.info(`${repo.id} does not exist. Cloning...`);
+        try {
+            const git = simpleGit({
+                progress: onProgress,
+            });
+
+            const gitConfig = Object.entries(repo.gitConfigMetadata ?? {}).flatMap(
+                ([key, value]) => ['--config', `${key}=${value}`]
+            );
+
+            // Explicitly specify --no-bare to ensure we get a working copy
+            await git.clone(
+                repo.cloneUrl,
+                repo.path,
+                [
+                    '--no-bare',
+                    ...gitConfig
+                ]
+            );
+
+            // This is still useful to ensure all branches are fetched
+            await git.cwd({
+                path: repo.path,
+            }).addConfig("remote.origin.fetch", "+refs/heads/*:refs/heads/*");
+            
+            logger.info(`Successfully cloned ${repo.id}`);
+        } catch (error) {
+            logger.error(`Failed to clone repository ${repo.id}: ${error}`);
+            throw error;
+        }
+    }
+}
+
+
 export const cloneRepository = async (repo: GitRepository, onProgress?: (event: SimpleGitProgressEvent) => void) => {
     if (existsSync(repo.path)) {
         logger.warn(`${repo.id} already exists. Skipping clone.`)
@@ -24,7 +99,7 @@ export const cloneRepository = async (repo: GitRepository, onProgress?: (event: 
         repo.cloneUrl,
         repo.path,        
         [
-            '--no-bare',
+            '--bare',
             ...gitConfig
         ]
     );
