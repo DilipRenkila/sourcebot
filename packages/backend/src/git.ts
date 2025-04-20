@@ -1,8 +1,8 @@
 import { GitRepository } from './types.js';
 import { simpleGit, SimpleGitProgressEvent } from 'simple-git';
 import { existsSync } from 'fs';
+import { rm } from 'fs/promises';
 import { createLogger } from './logger.js';
-
 const logger = createLogger('git');
 
 /**
@@ -30,43 +30,66 @@ export const syncRepository = async (repo: GitRepository, onProgress?: (event: S
                 return;
             }
 
-            // Get the list of remote branches to determine the default branch
-            const branches = await git.cwd({
-                path: repo.path,
-            }).branch(['-r']);
-
-            // Try to determine the default branch
-            let defaultBranch = null;
-            
-            // Check for common branch names in order of likelihood
-            const branchPriorities = ['origin/main', 'origin/master', 'origin/develop', 'origin/dev'];
-            
-            for (const branch of branchPriorities) {
-                if (branches.all.includes(branch)) {
-                    defaultBranch = branch.replace('origin/', '');
-                    break;
+            try {
+                // Try to pull with --ff-only to avoid merge conflicts
+                await git.cwd({
+                    path: repo.path,
+                }).pull(["--ff-only", "--progress"]);
+                
+                logger.info(`Successfully pulled latest changes for ${repo.id}`);
+            } catch (error) {
+                // If pull fails, try to reset the repository to a clean state and then pull again
+                logger.warn(`Pull failed for ${repo.id}, attempting to reset and try again: ${error}`);
+                
+                try {
+                    // Reset any local changes
+                    await git.cwd({
+                        path: repo.path,
+                    }).reset(['--hard']);
+                    
+                    // Clean the working directory
+                    await git.cwd({
+                        path: repo.path,
+                    }).clean('f', ['-d']);
+                    
+                    // Try pull again with rebase strategy
+                    await git.cwd({
+                        path: repo.path,
+                    }).pull(["--rebase", "--progress"]);
+                    
+                    logger.info(`Successfully reset and pulled latest changes for ${repo.id}`);
+                } catch (resetError) {
+                    // If all else fails, delete the repo and re-clone
+                    logger.warn(`Reset and pull failed for ${repo.id}, removing and re-cloning: ${resetError}`);
+                    
+                    // Remove the existing repository
+                    await rm(repo.path, { recursive: true, force: true });
+                    
+                    // Re-clone the repository
+                    const git = simpleGit({
+                        progress: onProgress,
+                    });
+                    
+                    const gitConfig = Object.entries(repo.gitConfigMetadata ?? {}).flatMap(
+                        ([key, value]) => ['--config', `${key}=${value}`]
+                    );
+                    
+                    await git.clone(
+                        repo.cloneUrl,
+                        repo.path,
+                        [
+                            '--no-bare',
+                            ...gitConfig
+                        ]
+                    );
+                    
+                    await git.cwd({
+                        path: repo.path,
+                    }).addConfig("remote.origin.fetch", "+refs/heads/*:refs/heads/*");
+                    
+                    logger.info(`Successfully re-cloned ${repo.id}`);
                 }
             }
-            
-            // If we still don't have a default branch, use the first available remote branch
-            if (!defaultBranch && branches.all.length > 0) {
-                const firstBranch = branches.all.find(b => b.startsWith('origin/'));
-                if (firstBranch) {
-                    defaultBranch = firstBranch.replace('origin/', '');
-                }
-            }
-            
-            if (!defaultBranch) {
-                throw new Error(`No remote branches found for repository ${repo.id}`);
-            }
-            
-            // Pull using the identified default branch
-            logger.info(`Pulling from branch '${defaultBranch}' for ${repo.id}`);
-            await git.cwd({
-                path: repo.path,
-            }).pull("origin", defaultBranch, ["--progress"]);
-            
-            logger.info(`Successfully pulled latest changes for ${repo.id}`);
         } catch (error) {
             logger.error(`Failed to pull repository ${repo.id}: ${error}`);
             throw error;
@@ -103,8 +126,8 @@ export const syncRepository = async (repo: GitRepository, onProgress?: (event: S
             throw error;
         }
     }
-}
-export const cloneRepository = async (repo: GitRepository, onProgress?: (event: SimpleGitProgressEvent) => void) => {
+
+}export const cloneRepository = async (repo: GitRepository, onProgress?: (event: SimpleGitProgressEvent) => void) => {
     if (existsSync(repo.path)) {
         logger.warn(`${repo.id} already exists. Skipping clone.`)
         return;
