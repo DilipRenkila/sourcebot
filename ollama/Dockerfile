@@ -1,7 +1,10 @@
-FROM ollama/ollama:latest
+ROM ollama/ollama
 
-COPY ./entrypoint.sh /entrypoint.sh
+COPY ./run-ollama.sh /tmp/run-ollama.sh
 
-RUN chmod +x /entrypoint.sh
+WORKDIR /tmp
 
-ENTRYPOINT ["/entrypoint.sh"]
+RUN chmod +x run-ollama.sh \
+    && ./run-ollama.sh
+
+EXPOSE 11434
