@@ -126,8 +126,8 @@ export const syncRepository = async (repo: GitRepository, onProgress?: (event: S
             throw error;
         }
     }
-
-}export const cloneRepository = async (repo: GitRepository, onProgress?: (event: SimpleGitProgressEvent) => void) => {
+}
+export const cloneRepository = async (repo: GitRepository, onProgress?: (event: SimpleGitProgressEvent) => void) => {
     if (existsSync(repo.path)) {
         logger.warn(`${repo.id} already exists. Skipping clone.`)
         return;
