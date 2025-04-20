@@ -1,10 +1,10 @@
-name: Build and Push Docker Image
+name: Build and Push Docker Images
 
 on:
   push:
     branches: [ bitbucket-cloud ]
 jobs:
-  build:
+  build-sourcebot:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,9 +20,30 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push Sourcebot Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/sourcebot:3.0
+
+  build-ollama:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Ollama Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ollama
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/ollama:latest
