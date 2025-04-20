@@ -30,16 +30,42 @@ export const syncRepository = async (repo: GitRepository, onProgress?: (event: S
                 return;
             }
 
-            // Pull the repository
+            // Get the list of remote branches to determine the default branch
+            const branches = await git.cwd({
+                path: repo.path,
+            }).branch(['-r']);
+
+            // Try to determine the default branch
+            let defaultBranch = null;
+            
+            // Check for common branch names in order of likelihood
+            const branchPriorities = ['origin/main', 'origin/master', 'origin/develop', 'origin/dev'];
+            
+            for (const branch of branchPriorities) {
+                if (branches.all.includes(branch)) {
+                    defaultBranch = branch.replace('origin/', '');
+                    break;
+                }
+            }
+            
+            // If we still don't have a default branch, use the first available remote branch
+            if (!defaultBranch && branches.all.length > 0) {
+                const firstBranch = branches.all.find(b => b.startsWith('origin/'));
+                if (firstBranch) {
+                    defaultBranch = firstBranch.replace('origin/', '');
+                }
+            }
+            
+            if (!defaultBranch) {
+                throw new Error(`No remote branches found for repository ${repo.id}`);
+            }
+            
+            // Pull using the identified default branch
+            logger.info(`Pulling from branch '${defaultBranch}' for ${repo.id}`);
             await git.cwd({
                 path: repo.path,
-            }).pull(
-                "origin",
-                undefined,
-                [
-                    "--progress"
-                ]
-            );
+            }).pull("origin", defaultBranch, ["--progress"]);
+            
             logger.info(`Successfully pulled latest changes for ${repo.id}`);
         } catch (error) {
             logger.error(`Failed to pull repository ${repo.id}: ${error}`);
@@ -78,8 +104,6 @@ export const syncRepository = async (repo: GitRepository, onProgress?: (event: S
         }
     }
 }
-
-
 export const cloneRepository = async (repo: GitRepository, onProgress?: (event: SimpleGitProgressEvent) => void) => {
     if (existsSync(repo.path)) {
         logger.warn(`${repo.id} already exists. Skipping clone.`)
@@ -132,13 +156,50 @@ export const pullRepository = async (repo: GitRepository, onProgress?: (event: S
         progress: onProgress,
     });
 
-    await git.cwd({
-        path: repo.path,
-    }).pull(
-        "origin",
-        undefined,
-        [
-            "--progress"
-        ]
-    );
+    try {
+        // First, fetch to make sure we have the latest remote information
+        await git.cwd({
+            path: repo.path,
+        }).fetch("origin", ["--prune", "--progress"]);
+
+        // Get the list of remote branches
+        const branches = await git.cwd({
+            path: repo.path,
+        }).branch(['-r']);
+
+        // Try to determine the default branch
+        let defaultBranch = null;
+        
+        // Check for common branch names in order of likelihood
+        const branchPriorities = ['origin/main', 'origin/master', 'origin/develop', 'origin/dev'];
+        
+        for (const branch of branchPriorities) {
+            if (branches.all.includes(branch)) {
+                defaultBranch = branch.replace('origin/', '');
+                break;
+            }
+        }
+        
+        // If we still don't have a default branch, use the first available remote branch
+        if (!defaultBranch && branches.all.length > 0) {
+            const firstBranch = branches.all.find(b => b.startsWith('origin/'));
+            if (firstBranch) {
+                defaultBranch = firstBranch.replace('origin/', '');
+            }
+        }
+        
+        if (!defaultBranch) {
+            throw new Error(`No remote branches found for repository ${repo.id}`);
+        }
+        
+        // Pull using the identified default branch
+        logger.info(`Pulling from branch '${defaultBranch}' for ${repo.id}`);
+        await git.cwd({
+            path: repo.path,
+        }).pull("origin", defaultBranch, ["--progress"]);
+        
+    } catch (error) {
+        logger.error(`Failed to pull repository ${repo.id}: ${error}`);
+        throw error;
+    }
 }

@@ -7,7 +7,7 @@ import { getGiteaReposFromConfig } from "./gitea.js";
 import { getGerritReposFromConfig } from "./gerrit.js";
 import { getBitbucketReposFromConfig } from "./bitbucket.js";
 import { AppContext, LocalRepository, GitRepository, Repository, Settings } from "./types.js";
-import { cloneRepository, fetchRepository, pullRepository ,syncRepository} from "./git.js";
+import { syncRepository} from "./git.js";
 import { createLogger } from "./logger.js";
 import { createRepository, Database, loadDB, updateRepository, updateSettings } from './db.js';
 import { arraysEqualShallow, isRemotePath, measure } from "./utils.js";
