@@ -1,4 +1,4 @@
-ROM ollama/ollama
+FROM ollama/ollama
 
 COPY ./run-ollama.sh /tmp/run-ollama.sh
 
