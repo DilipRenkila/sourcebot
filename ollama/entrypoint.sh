@@ -11,4 +11,6 @@ done
 
 ollama pull nomic-embed-text
 
+ollama pull bge-m3
+
 wait $SERVE_PID
