@@ -13,4 +13,6 @@ ollama pull nomic-embed-text
 
 ollama pull bge-m3
 
+ollama pull deepseek-coder-v2
+
 wait $SERVE_PID
