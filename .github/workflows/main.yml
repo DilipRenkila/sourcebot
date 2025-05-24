@@ -46,4 +46,4 @@ jobs:
         with:
           context: ./ollama
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/ollama:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/ollama:nomic-bge
